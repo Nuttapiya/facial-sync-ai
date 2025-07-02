@@ -180,7 +180,8 @@ const analysisScores = computed(() => {
         return { cant: null };
     }
     const landmarks = analysisResult.value[0].faceLandmarks;
-    
+    if (!landmarks.pupilLeft || !landmarks.pupilRight || !landmarks.mouthLeft || !landmarks.mouthRight) return { cant: null };
+
     const getAngle = (p1: Point, p2: Point) => Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
     
     const eyeAngle = getAngle(landmarks.pupilLeft, landmarks.pupilRight);
@@ -194,6 +195,7 @@ const analysisScores = computed(() => {
 const facialMidlinePoints = computed(() => {
     if (!analysisResult.value || !analysisResult.value[0]?.faceLandmarks) return null;
     const landmarks = analysisResult.value[0].faceLandmarks;
+    if (!landmarks.pupilLeft || !landmarks.pupilRight || !landmarks.noseRootLeft || !landmarks.noseRootRight || !landmarks.noseTip) return null;
     
     const midPointBetweenEyesX = (landmarks.pupilLeft.x + landmarks.pupilRight.x) / 2;
     const noseMidlineX = (landmarks.noseRootLeft.x + landmarks.noseRootRight.x) / 2;
@@ -209,53 +211,50 @@ const facialMidlinePoints = computed(() => {
     };
 });
 
+// ⭐ จุดที่แก้ไข: เพิ่มการตรวจสอบ Landmark ก่อนใช้งาน ⭐
 const facialOutlines = computed(() => {
+  const defaultOutlines = { jawLine: '', noseBridge: '', noseBottom: '', outerLip: '', innerLip: '' };
   if (!analysisResult.value || !analysisResult.value[0]?.faceLandmarks) {
-    return { jawLine: '', noseBridge: '', noseBottom: '', outerLip: '', innerLip: '' };
+    return defaultOutlines;
   }
   const landmarks = analysisResult.value[0].faceLandmarks;
 
-  const pointsToString = (points: Point[]) => {
-    return points.map(p => `${p.x},${p.y}`).join(' ');
+  // ฟังก์ชันช่วยแปลง array ของ points เป็น string สำหรับ SVG
+  const pointsToString = (points: (Point | undefined)[]): string => {
+    // Filter out any undefined points before mapping
+    const validPoints = points.filter((p): p is Point => p !== undefined);
+    if (validPoints.length < 2) return ''; // A line needs at least 2 points
+    return validPoints.map(p => `${p.x},${p.y}`).join(' ');
   };
 
-  const jawLinePoints: Point[] = [
+  // สร้าง string สำหรับแต่ละเส้น โดยตรวจสอบทุกจุดที่ต้องการ
+  const jawLine = pointsToString([
     landmarks.jawLeftGonion, landmarks.jawLeftAlveolar,
     landmarks.chinGnathion,
     landmarks.jawRightAlveolar, landmarks.jawRightGonion,
-  ];
+  ]);
 
-  const noseBridgePoints: Point[] = [
-    landmarks.eyebrowLeftInner,
-    landmarks.noseRootLeft,
-    landmarks.noseTip,
-    landmarks.noseRootRight,
-    landmarks.eyebrowRightInner
-  ];
-  const noseBottomPoints: Point[] = [
-    landmarks.noseAlaLeft,
-    landmarks.noseTip,
-    landmarks.noseAlaRight
-  ];
+  const noseBridge = pointsToString([
+    landmarks.eyebrowLeftInner, landmarks.noseRootLeft, landmarks.noseTip,
+    landmarks.noseRootRight, landmarks.eyebrowRightInner
+  ]);
+  const noseBottom = pointsToString([
+    landmarks.noseAlaLeft, landmarks.noseTip, landmarks.noseAlaRight
+  ]);
 
-  const outerLipPoints: Point[] = [
+  const outerLip = pointsToString([
     landmarks.mouthCornerLeft, landmarks.upperLipLeft, landmarks.upperLipTop, 
     landmarks.upperLipRight, landmarks.mouthCornerRight, landmarks.lowerLipRight,
     landmarks.lowerLipBottom, landmarks.lowerLipLeft, landmarks.mouthCornerLeft
-  ];
-  const innerLipPoints: Point[] = [
+  ]);
+  const innerLip = pointsToString([
     landmarks.mouthLeft, landmarks.upperLipBottom, landmarks.mouthRight,
     landmarks.lowerLipTop, landmarks.mouthLeft
-  ];
-
-  return {
-    jawLine: pointsToString(jawLinePoints),
-    noseBridge: pointsToString(noseBridgePoints),
-    noseBottom: pointsToString(noseBottomPoints),
-    outerLip: pointsToString(outerLipPoints),
-    innerLip: pointsToString(innerLipPoints),
-  };
+  ]);
+  
+  return { jawLine, noseBridge, noseBottom, outerLip, innerLip };
 });
+
 
 // --- Methods ---
 const handleFileChange = async (event: Event) => {
@@ -263,16 +262,12 @@ const handleFileChange = async (event: Event) => {
     const file = target.files?.[0];
     if (!file || isLoading.value) return;
 
-    // Reset states
     errorMessage.value = '';
     analysisResult.value = null;
-    
-    // Create a preview URL
     imagePreviewUrl.value = URL.createObjectURL(file);
     
     await analyzePhoto(file);
     
-    // Clear the file input so the same file can be re-uploaded
     target.value = '';
 };
 
@@ -293,7 +288,7 @@ const analyzePhoto = async (file: File) => {
         if (data && data.length > 0) {
             analysisResult.value = data;
         } else {
-            throw new Error('ไม่สามารถตรวจจับใบหน้าในรูปภาพนี้ได้ (API returned empty array)');
+            throw new Error('ไม่สามารถตรวจจับใบหน้าในรูปภาพนี้ได้');
         }
 
     } catch (e: any) {
