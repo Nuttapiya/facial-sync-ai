@@ -38,10 +38,6 @@
           
           <div class="pt-2 border-t mt-2">
             <label class="flex items-center">
-              <input type="checkbox" v-model="displayOptions.jawLine" class="form-checkbox h-5 w-5 text-indigo-600 rounded">
-              <span class="ml-2 text-gray-700">แสดงโครงหน้า (Jawline)</span>
-            </label>
-            <label class="flex items-center">
               <input type="checkbox" v-model="displayOptions.noseLine" class="form-checkbox h-5 w-5 text-indigo-600 rounded">
               <span class="ml-2 text-gray-700">แสดงโครงจมูก</span>
             </label>
@@ -114,19 +110,17 @@
             <circle v-for="(point, name) in analysisResult[0].faceLandmarks" :key="name" :cx="point.x" :cy="point.y" r="4" fill="rgba(255, 255, 0, 0.7)" stroke="black" stroke-width="1"></circle>
           </g>
 
-          <line v-if="displayOptions.eyeLine" :x1="analysisResult[0].faceLandmarks.pupilLeft.x" :y1="analysisResult[0].faceLandmarks.pupilLeft.y" :x2="analysisResult[0].faceLandmarks.pupilRight.x" :y2="analysisResult[0].faceLandmarks.pupilRight.y" stroke="#3b82f6" stroke-width="3" stroke-linecap="round"></line>
-          <line v-if="displayOptions.smileLine" :x1="analysisResult[0].faceLandmarks.mouthLeft.x" :y1="analysisResult[0].faceLandmarks.mouthLeft.y" :x2="analysisResult[0].faceLandmarks.mouthRight.x" :y2="analysisResult[0].faceLandmarks.mouthRight.y" stroke="#22c55e" stroke-width="3" stroke-linecap="round"></line>
+          <line v-if="displayOptions.eyeLine && facialMidlinePoints" :x1="analysisResult[0].faceLandmarks.pupilLeft.x" :y1="analysisResult[0].faceLandmarks.pupilLeft.y" :x2="analysisResult[0].faceLandmarks.pupilRight.x" :y2="analysisResult[0].faceLandmarks.pupilRight.y" stroke="#3b82f6" stroke-width="3" stroke-linecap="round"></line>
+          <line v-if="displayOptions.smileLine && facialMidlinePoints" :x1="analysisResult[0].faceLandmarks.mouthLeft.x" :y1="analysisResult[0].faceLandmarks.mouthLeft.y" :x2="analysisResult[0].faceLandmarks.mouthRight.x" :y2="analysisResult[0].faceLandmarks.mouthRight.y" stroke="#22c55e" stroke-width="3" stroke-linecap="round"></line>
           <line v-if="displayOptions.midline && facialMidlinePoints" :x1="facialMidlinePoints.top.x" :y1="facialMidlinePoints.top.y" :x2="facialMidlinePoints.bottom.x" :y2="facialMidlinePoints.bottom.y" stroke="#ef4444" stroke-width="3" stroke-dasharray="8 8" stroke-linecap="round"></line>
           
           <g fill="none" stroke="rgba(255, 255, 255, 0.9)" stroke-width="2">
-            <polyline v-if="displayOptions.jawLine" :points="facialOutlines.jawLine" />
             <g v-if="displayOptions.noseLine">
-              <polyline :points="facialOutlines.noseBridge" />
-              <polyline :points="facialOutlines.noseBottom" />
+              <polyline :points="facialOutlines.nose" />
             </g>
             <g v-if="displayOptions.lipLine">
-              <polyline :points="facialOutlines.outerLip" />
-              <polyline :points="facialOutlines.innerLip" />
+              <polyline :points="facialOutlines.upperLip" />
+              <polyline :points="facialOutlines.lowerLip" />
             </g>
           </g>
         </svg>
@@ -169,7 +163,7 @@ const displayOptions = ref({
     eyeLine: true,
     smileLine: true,
     midline: true,
-    jawLine: true,
+    // ⭐ ลบ jawLine ออก
     noseLine: true,
     lipLine: true,
 });
@@ -211,48 +205,52 @@ const facialMidlinePoints = computed(() => {
     };
 });
 
-// ⭐ จุดที่แก้ไข: เพิ่มการตรวจสอบ Landmark ก่อนใช้งาน ⭐
+// ⭐ จุดที่แก้ไข: ปรับ Logic การวาดเส้นทั้งหมด
 const facialOutlines = computed(() => {
-  const defaultOutlines = { jawLine: '', noseBridge: '', noseBottom: '', outerLip: '', innerLip: '' };
+  const defaultOutlines = { nose: '', upperLip: '', lowerLip: '' };
   if (!analysisResult.value || !analysisResult.value[0]?.faceLandmarks) {
     return defaultOutlines;
   }
   const landmarks = analysisResult.value[0].faceLandmarks;
 
-  // ฟังก์ชันช่วยแปลง array ของ points เป็น string สำหรับ SVG
   const pointsToString = (points: (Point | undefined)[]): string => {
-    // Filter out any undefined points before mapping
     const validPoints = points.filter((p): p is Point => p !== undefined);
-    if (validPoints.length < 2) return ''; // A line needs at least 2 points
+    if (validPoints.length < 2) return '';
     return validPoints.map(p => `${p.x},${p.y}`).join(' ');
   };
 
-  // สร้าง string สำหรับแต่ละเส้น โดยตรวจสอบทุกจุดที่ต้องการ
-  const jawLine = pointsToString([
-    landmarks.jawLeftGonion, landmarks.jawLeftAlveolar,
-    landmarks.chinGnathion,
-    landmarks.jawRightAlveolar, landmarks.jawRightGonion,
-  ]);
-
-  const noseBridge = pointsToString([
-    landmarks.eyebrowLeftInner, landmarks.noseRootLeft, landmarks.noseTip,
-    landmarks.noseRootRight, landmarks.eyebrowRightInner
-  ]);
-  const noseBottom = pointsToString([
-    landmarks.noseAlaLeft, landmarks.noseTip, landmarks.noseAlaRight
-  ]);
-
-  const outerLip = pointsToString([
-    landmarks.mouthCornerLeft, landmarks.upperLipLeft, landmarks.upperLipTop, 
-    landmarks.upperLipRight, landmarks.mouthCornerRight, landmarks.lowerLipRight,
-    landmarks.lowerLipBottom, landmarks.lowerLipLeft, landmarks.mouthCornerLeft
-  ]);
-  const innerLip = pointsToString([
-    landmarks.mouthLeft, landmarks.upperLipBottom, landmarks.mouthRight,
-    landmarks.lowerLipTop, landmarks.mouthLeft
+  // 1. เส้นจมูก: เชื่อมจากหัวคิ้วขวา -> สันจมูก -> ปลายจมูก -> สันจมูก -> หัวคิ้วซ้าย
+  const nose = pointsToString([
+    landmarks.eyebrowRightInner,
+    landmarks.noseRootRight,
+    landmarks.noseAlaTopRight,
+    landmarks.noseAlaOutTipRight,
+    landmarks.noseTip,
+    landmarks.noseAlaOutTipLeft,
+    landmarks.noseAlaTopLeft,
+    landmarks.noseRootLeft,
+    landmarks.eyebrowLeftInner
   ]);
   
-  return { jawLine, noseBridge, noseBottom, outerLip, innerLip };
+  // 2. เส้นปากบน: เชื่อมตามขอบปากบน
+  const upperLip = pointsToString([
+      landmarks.mouthCornerRight,
+      landmarks.upperLipRight,
+      landmarks.upperLipTop,
+      landmarks.upperLipLeft,
+      landmarks.mouthCornerLeft,
+  ]);
+
+  // 3. เส้นปากล่าง: เชื่อมตามขอบปากล่าง
+  const lowerLip = pointsToString([
+      landmarks.mouthCornerRight,
+      landmarks.lowerLipRight,
+      landmarks.lowerLipBottom,
+      landmarks.lowerLipLeft,
+      landmarks.mouthCornerLeft,
+  ]);
+  
+  return { nose, upperLip, lowerLip };
 });
 
 
